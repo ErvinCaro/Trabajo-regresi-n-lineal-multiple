@@ -1,0 +1,306 @@
+---
+title: "Estudio de Factores Determinantes en el Precio de Venta de Autos de Segunda Mano"
+subtitle: "Predicción de precios de automóviles"
+name: "Ervin Alexander Caro Martinez & Juan Sebastian Barbosa Solano"
+date: "2024-04-23"
+format:
+  html:
+    toc: true # se organice en secciones
+    number-sections: true #enumera las secciones
+    code-fold: true #oculta los codigos
+    code-summary: "Ver código" # leyenda para mostrar el codigo
+    smooth-scroll: true # permite un deslizamiento lento 
+editor: visual
+---
+
+# Introducción
+
+La importancia de abordar el desafío de valorar correctamente los vehículos usados en la industria automotriz. Se resalta la necesidad de establecer precios de venta competitivos y justos, lo cual es fundamental para garantizar la satisfacción del cliente y mantener la competitividad en el mercado. Además, se reconoce que este proceso de valoración puede ser complejo debido a la variedad de factores que influyen en el precio de venta de los automóviles de segunda mano.
+
+El análisis de regresión lineal múltiple se presenta como una herramienta estadística valiosa en este contexto. Este enfoque permite identificar y comprender los factores que afectan el precio de venta de los vehículos usados al modelar la relación entre múltiples variables independientes, como el año del vehículo, el kilometraje, el tipo de combustible, entre otros, y la variable dependiente del precio de venta. Al destacar la utilidad del análisis de regresión lineal múltiple, se sugiere que esta técnica puede proporcionar información crucial para mejorar el proceso de valoración de vehículos usados y tomar decisiones más informadas en la industria automotriz.
+
+## Objetivo General
+
+Determinar los factores determinantes en el precio de venta de automóviles usados mediante análisis de regresión lineal múltiple.
+
+## Objetivos Específicos
+
+1.  Analizar la relación entre el año de fabricación y el precio de venta de automóviles usados.
+2.  Investigar cómo el kilometraje afecta el precio de venta de los automóviles usados.
+3.  Identificar los principales factores que influyen en el precio de venta de automóviles usados.
+
+## Preguntas
+
+1.  ¿Existe una relación significativa entre el año de fabricación y el precio de venta de automóviles usados?
+2.  ¿Cómo afecta el kilometraje al precio de venta de los automóviles usados?
+
+Instalamos las librerias necesarias
+
+```{r}
+library(readxl)
+library(ggplot2)
+library(dplyr)
+library(plotly)
+library(gridExtra)
+library(car)
+library(olsrr)
+library(lmtest)
+library(nortest)
+```
+
+# Análisis Exploratorio de Datos
+
+Cargamos la base de datos y eliminamos los datos en blanco.
+
+```{r}
+datos_carros <- read_excel("C:\\Users\\USUARIO\\OneDrive\\Escritorio\\Nueva carpeta\\trabajo R ya outliers\\datos_carros.xlsx")
+
+# Eliminar filas con valores en blanco (NA)
+datos_carros <- na.omit(datos_carros)
+```
+
+## Visualización de Datos Distribución de Variables
+
+Para comenzar, examinamos la distribución de las variables clave en nuestro conjunto de datos. Observamos que el precio de venta de los automóviles de segunda mano presenta una distribución sesgada hacia la derecha, lo que indica la presencia de algunos vehículos con precios notablemente altos. Por otro lado, el año de fabricación muestra una distribución más uniforme, con una concentración mayor en los años más recientes. Respecto al kilometraje, encontramos una distribución variada, con una mayoría de vehículos que presentan un kilometraje moderado, pero también una cantidad significativa de vehículos con alto kilometraje.
+
+```{r}
+# Gráfico de densidad para selling_price
+density_plot_selling_price <- ggplot(datos_carros, aes(x = selling_price)) +
+  geom_density(fill = "skyblue", color = "black") +
+  labs(title = "Gráfico de densidad para selling_price", x = "selling_price", y = "Densidad")
+print(density_plot_selling_price)
+
+```
+
+```{r}
+# Histograma para km_driven
+hist_plot_km_driven <- ggplot(datos_carros, aes(x = km_driven)) +
+  geom_histogram(binwidth = 1000, fill = "skyblue", color = "black") +
+  labs(title = "Histograma para km_driven", x = "km_driven", y = "Frecuencia")
+
+print(hist_plot_km_driven)
+```
+
+```{r}
+# Crear una ventana gráfica para mostrar múltiples gráficos
+par(mfrow = c(3, 2)) # 3 filas, 2 columnas
+
+categorical_vars <- c("fuel", "seller_type", "transmission", "owner", "seats") 
+for (var in categorical_vars) {
+  freq_table <- table(datos_carros[[var]])
+  cat(paste("Tabla de frecuencia para", var, ":\n"))
+  barplot(freq_table, main = paste("Gráfico de barras para", var))
+}
+```
+
+## Relación entre Variables
+
+Además de examinar la distribución individual de cada variable, exploramos la relación entre ellas. Calculamos la matriz de correlación y encontramos que existe una correlación negativa moderada entre el año de fabricación y el kilometraje, lo que sugiere que los vehículos más antiguos tienden a tener un kilometraje más alto. También observamos una correlación débil pero positiva entre el precio de venta y el año de fabricación, lo que indica que los vehículos más recientes tienden a tener precios ligeramente más altos.
+
+```{r}
+datos_numericos <- datos_carros %>%
+  select_if(is.numeric)
+
+# Calcular la correlación de Pearson entre las variables numéricas
+correlaciones <- cor(datos_numericos, use = "complete.obs", method = "pearson")
+
+# Mostrar las correlaciones
+correlaciones
+```
+
+### Estadísticas Resumidas
+
+```{r}
+# Estadísticas resumidas
+mean_stats <- datos_carros %>%
+  select_if(is.numeric) %>%
+  summarise_all(mean)
+
+median_stats <- datos_carros %>%
+  select_if(is.numeric) %>%
+  summarise_all(median)
+
+sd_stats <- datos_carros %>%
+  select_if(is.numeric) %>%
+  summarise_all(sd)
+
+min_stats <- datos_carros %>%
+  select_if(is.numeric) %>%
+  summarise_all(min)
+
+max_stats <- datos_carros %>%
+  select_if(is.numeric) %>%
+  summarise_all(max)
+
+summary_combined <- bind_rows(mean_stats, median_stats, sd_stats, min_stats, max_stats, .id = "summary_type")
+
+# Imprimir el dataframe combinado
+print(summary_combined)
+
+```
+
+-   La media del año de fabricación de los automóviles es aproximadamente 2014, lo que indica que en promedio, los vehículos en venta son relativamente recientes.
+
+-   El precio de venta promedio es alrededor de 649,867 unidades monetarias, con un mínimo de 29,999 y un máximo de 10,000,000 unidades monetarias. Esta amplia gama sugiere una variabilidad significativa en los precios.
+
+-   El kilometraje promedio es de aproximadamente 69,192 kilómetros, con un mínimo de 1 kilómetro y un máximo de 2,360,457 kilómetros. Esto muestra una variabilidad considerable en el kilometraje recorrido por los vehículos.
+
+-   El consumo de combustible promedio es de alrededor de 27.2 km/litro, con un mínimo de 0 km/litro y un máximo de 33922 km/litro. Esta variación indica que hay una amplia gama de eficiencia en el consumo de combustible entre los automóviles.
+
+-   La cilindrada del motor promedio es de aproximadamente 1459 cc, con un mínimo de 624 cc y un máximo de 3604 cc. Esto muestra una diversidad en el tamaño de los motores de los vehículos.
+
+-   La potencia máxima promedio es de aproximadamente 188 CV, con un mínimo de 32.8 CV y un máximo de 108495 CV. Esto indica una amplia variabilidad en la potencia de los vehículos.
+
+-   El número promedio de asientos es aproximadamente 5.42, lo que sugiere que la mayoría de los automóviles tienen capacidad para alrededor de 5 personas.
+
+## Análisis por Categorías
+
+Para profundizar en nuestro análisis, realizamos comparaciones entre diferentes categorías de variables. Por ejemplo, analizamos la diferencia en el precio de venta promedio entre diferentes marcas de automóviles y encontramos variaciones significativas. Asimismo, examinamos cómo varía el precio de venta según el tipo de transmisión del vehículo y encontramos que los automóviles con transmisión automática tienden a tener un precio ligeramente más alto en comparación con los de transmisión manual.
+
+```{r}
+# Visualizaciones de datos
+plot <- plot_ly(data = datos_carros, x = ~year, y = ~selling_price, 
+                size = ~km_driven, color = ~transmission, 
+                colors = c("Automatic" = "blue", "Manual" = "red"), 
+                type = "scatter", mode = "markers",
+                text = ~paste("Name: ", name, "<br>",
+                              "Seller Type: ", seller_type, "<br>",
+                              "Transmission: ", transmission, "<br>",
+                              "Owner: ", owner, "<br>",
+                              "Mileage: ", mileage, "<br>",
+                              "Engine: ", engine, "<br>",
+                              "Max Power: ", max_power, "<br>",
+                              "Torque: ", torque, "<br>",
+                              "Seats: ", seats)) %>%
+  layout(title = "Relación entre año, precio de venta y kilometraje",
+         xaxis = list(title = "Año"),
+         yaxis = list(title = "Precio de venta"),
+         hovermode = "closest")
+
+# Mostrar el gráfico
+plot
+```
+
+## Identificación de Outliers
+
+Después de un exhaustivo análisis, hemos identificado un modelo que incluye únicamente variables significativas. Observamos que tanto el coeficiente de determinación (R cuadrado) como el coeficiente de determinación ajustado han mejorado considerablemente, acercándose más a la realidad de nuestros datos. Con el fin de asegurar la robustez de nuestro análisis, decidimos explorar cómo la eliminación de outliers influye en estas métricas. cargamos el modelo:
+
+```{r}
+modelo_inicial <- lm(selling_price ~ 1, data = datos_carros)
+
+# Actualizar el modelo añadiendo las variables predictoras una por una 
+
+# sacando las no significantes del modelo para realizar un 3 modelo
+modelo_inicial <- update(modelo_inicial, . ~ . + year, data = datos_carros)
+modelo_inicial <- update(modelo_inicial, . ~ . + km_driven, data = datos_carros)
+modelo_inicial <- update(modelo_inicial, . ~ . + fuel, data = datos_carros)
+modelo_inicial <- update(modelo_inicial, . ~ . + seller_type, data = datos_carros)
+modelo_inicial <- update(modelo_inicial, . ~ . + transmission, data = datos_carros)
+modelo_inicial <- update(modelo_inicial, . ~ . + owner, data = datos_carros)
+modelo_inicial <- update(modelo_inicial, . ~ . + seats, data = datos_carros)
+```
+
+Visualizamos el R cuadrado y R cuadrado ajustado
+
+```{r}
+summary(modelo_inicial)
+```
+
+En esta etapa de nuestro análisis, nos centraremos en identificar y eliminar los valores atípicos o outliers de nuestro conjunto de datos. Los outliers son observaciones que se desvían significativamente del patrón general de los datos y pueden distorsionar nuestros análisis y modelos estadísticos. Para abordar este problema, llevaremos a cabo un proceso de detección de outliers y los eliminaremos del conjunto de datos. Al hacerlo, mejoraremos la precisión y la validez de nuestros análisis, permitiendo que nuestros modelos estadísticos capturen de manera más precisa las relaciones subyacentes en los datos y generen resultados más confiables.
+
+```{r}
+id<- ols_plot_resid_lev(modelo_inicial)
+```
+
+```{r}
+residuos <- resid(modelo_inicial)
+
+# Calcula los residuos estandarizados
+residuos_estandarizados <- rstandard(modelo_inicial)
+
+# Define un umbral para identificar outliers basados en residuos estandarizados
+umbral <- 2  # Puedes ajustar este valor según tus necesidades
+
+# Encuentra las observaciones que superan el umbral
+outliers <- which(abs(residuos_estandarizados) > umbral)
+
+# Elimina las observaciones con outliers del conjunto de datos
+datos_sin_outliers <- datos_carros[-outliers, ]
+
+# Verifica la cantidad de observaciones eliminadas
+cat("Número de outliers eliminados:", length(outliers), "\n")
+
+```
+
+En conjunto, este análisis exploratorio de datos nos proporciona una comprensión profunda de las variables relevantes en nuestro estudio y nos ayuda a establecer una base sólida para nuestros análisis posteriores.
+
+Después de eliminar los outliers de nuestro conjunto de datos, observamos una notable mejora en las métricas de ajuste de nuestro modelo estadístico. Específicamente, tanto el coeficiente de determinación R cuadrado como el coeficiente de determinación ajustado R cuadrado ajustado han aumentado significativamente. Estas métricas son indicadores cruciales de la capacidad de nuestro modelo para explicar la variabilidad en los datos observados. Un aumento en estas métricas sugiere que nuestro modelo se ajusta mejor a los datos restantes después de la eliminación de los outliers, lo que resulta en una mejor capacidad predictiva y una representación más precisa de las relaciones entre las variables. Este hallazgo refuerza la importancia de abordar los outliers en el análisis de datos, ya que su presencia puede distorsionar y sesgar los resultados de nuestros modelos.
+
+```{r}
+#resumen sin outliers
+datos_sin_puntos <- lm(selling_price ~ year + km_driven + fuel + seller_type + transmission + owner + seats, data = datos_sin_outliers)
+ols_plot_resid_lev(datos_sin_puntos)
+summary(datos_sin_puntos)
+```
+
+## Validación del modelo
+
+Comenzamos el proceso de validación del modelo para asegurar su fiabilidad y precisión. Esta etapa es esencial para garantizar que el modelo sea robusto y pueda generalizarse a datos futuros. El primer paso en este proceso es evaluar la normalidad de los residuos, lo que nos permite verificar si los errores del modelo siguen una distribución normal. Una distribución normal de los residuos es crucial para cumplir con los supuestos subyacentes del análisis de regresión y para obtener estimaciones no sesgadas de los parámetros del modelo.
+
+### Normalidad
+
+Utilizando el test de normalidad de Anderson-Darling, obtenemos un valor de estadístico significativamente alto (A = 189.38) con un p-valor muy pequeño (p \< 2.2e-16), lo que indica una fuerte evidencia en contra de la hipótesis nula de normalidad de los residuos.
+
+```{r}
+# Evaluar la normalidad de los residuos
+datos_residuales <-rstandard(datos_sin_puntos)
+ad.test(datos_residuales)#mayor al significancia del modelo se aprueba la normalidad
+
+```
+
+Continuando con la validación del modelo, procedemos a realizar la prueba de Q-Q (Quantile-Quantile), una herramienta gráfica que compara la distribución de los residuos del modelo con una distribución teórica normal.
+
+```{r}
+qqPlot(datos_residuales) #prueba Q-Q
+```
+
+Si observamos que los puntos en los extremos del gráfico se desvían notablemente de la línea recta, esto puede indicar que los residuos no siguen una distribución normal en esos extremos. En otras palabras, existen desviaciones significativas de la normalidad en ciertas áreas de los residuos del modelo.
+
+### Homocedasticidad
+
+El gráfico "Residuos vs. Valores ajustados" nos permite visualizar si existe algún patrón en la dispersión de los residuos en función de los valores predichos por el modelo. Idealmente, queremos que los residuos se distribuyan aleatoriamente alrededor de la línea horizontal en cero, lo que indicaría homocedasticidad. Si observamos un patrón sistemático, como una forma de embudo o cono, podríamos estar enfrentando heterocedasticidad.
+
+```{r}
+library(lmtest)
+plot(predict(datos_sin_puntos), resid(datos_sin_puntos), main = "Residuos vs. Valores ajustados")
+abline(h = 0, col = "red")
+```
+
+```{r}
+bptest(datos_sin_puntos)
+```
+
+En el gráfico, la línea roja representa la posición de los residuos cuando tienen un valor de cero. La prueba de Breusch-Pagan (BP) es una prueba estadística que se utiliza para evaluar la homocedasticidad en un modelo de regresión. El resultado de la prueba muestra un estadístico de prueba (BP) de 2939.5 con un p-valor extremadamente pequeño, cercano a cero. Esto indica una fuerte evidencia en contra de la hipótesis nula de homocedasticidad, lo que sugiere que hay heterocedasticidad presente en el modelo. En otras palabras, la varianza de los errores de predicción no es constante a lo largo de los valores predichos por el modelo, lo que puede afectar la validez de las inferencias realizadas a partir del modelo de regresión.
+
+### Independencia
+
+El análisis de autocorrelación de los residuos, representado en la "Función de autocorrelación de los residuos", nos permite examinar si hay alguna dependencia o patrón sistemático en los residuos a lo largo del tiempo o de las observaciones. Si los picos en la función de autocorrelación se extienden significativamente fuera del margen, puede indicar la presencia de dependencia.
+
+```{r}
+acf(resid(datos_sin_puntos), main = "Función de autocorrelación de los residuos") # si los picos se salen "mucho" del margen, hay dependencia
+
+```
+
+En el caso del modelo que estamos evaluando, el resultado de la prueba de Durbin-Watson (DW) es de 1.8442, con un p-valor extremadamente pequeño (6.123e-12). Esto sugiere que hay evidencia significativa en contra de la hipótesis nula de que no hay autocorrelación en los residuos. En otras palabras, hay autocorrelación positiva presente en los residuos del modelo. Esto implica que los residuos no son independientes entre sí, lo que podría sesgar las inferencias realizadas a partir del modelo de regresión.
+
+```{r}
+dwtest(datos_sin_puntos)  # Prueba de Durbin-Watson p-value < 0,005
+```
+
+## Conclusión
+
+A pesar de nuestros esfuerzos, el modelo de regresión lineal múltiple no cumplió completamente con todas las suposiciones necesarias para su validez. Encontramos que los residuos no siguieron una distribución normal, lo cual es esencial para el modelo de regresión lineal. Además, observamos heterocedasticidad en los residuos, lo que indica que la varianza de los errores no es constante a lo largo de todas las observaciones. También encontramos evidencia de autocorrelación positiva en los residuos, lo que sugiere la presencia de patrones sistemáticos no capturados por el modelo. Aunque el modelo proporciona una aproximación inicial para predecir el precio de venta de los automóviles, estos hallazgos nos indican que el modelo no es completamente fiable y que pueden ser necesarios ajustes adicionales o consideraciones de modelos alternativos para mejorar su precisión. En resumen, nuestro análisis ha identificado áreas de mejora y nos ha proporcionado una comprensión más profunda de los desafíos en la predicción del precio de venta de los automóviles de segunda mano.
+
+Basándonos en el análisis realizado, podemos decir que existe una relación significativa entre el año de fabricación y el precio de venta de automóviles usados. Esto se evidencia en el modelo de regresión lineal múltiple que desarrollamos, donde la variable del año de fabricación (year) mostró ser estadísticamente significativa para predecir el precio de venta (selling_price). Además, al observar los coeficientes del modelo, podemos inferir que, en general, los automóviles más recientes tienden a tener un precio de venta más alto, mientras que los automóviles más antiguos tienden a tener un precio de venta más bajo.
+
+En cuanto al efecto del kilometraje en el precio de venta de los automóviles usados, encontramos que también existe una relación significativa. Esto se refleja en la significancia estadística de la variable del kilometraje recorrido (km_driven) en nuestro modelo de regresión. A partir de los coeficientes del modelo, podemos concluir que, en general, a medida que aumenta el kilometraje recorrido por un automóvil, su precio de venta tiende a disminuir. Esto es consistente con la intuición de que los compradores valoran menos los automóviles con un kilometraje más alto, ya que pueden percibirlos como menos confiables o con mayor desgaste.
